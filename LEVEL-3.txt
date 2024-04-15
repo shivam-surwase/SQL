@@ -1,0 +1,352 @@
+--LEVEL-3
+--1. Find the customers who have ordered in each year at least once
+SELECT [Customer Name] FROM Orders$
+GROUP BY [Customer Name]
+HAVING COUNT(DISTINCT YEAR([Order Date]))=(SELECT COUNT(DISTINCT YEAR([Order Date])) FROM Orders$)
+
+
+--2. Determine the highest selling (number of product wise) month for each sub-category
+WITH CTE AS (
+SELECT [Sub-Category],[Product Name],MONTH([Order Date]) AS MONTH,SUM(Sales) AS SALES FROM Orders$
+GROUP BY [Sub-Category],[Product Name],MONTH([Order Date])
+),
+CTE1 AS (
+SELECT [Sub-Category],MAX(SALES) AS MAXSALE FROM CTE
+GROUP BY [Sub-Category]
+)
+SELECT CTE.[Sub-Category],[Product Name],MONTH,CTE1.MAXSALE FROM CTE
+JOIN CTE1 ON CTE.[Sub-Category]=CTE1.[Sub-Category] AND CTE.SALES=CTE1.MAXSALE;
+
+WITH CTE AS(
+SELECT [Sub-Category],Quantity,MONTH([Order Date]) AS MONTH,SUM(Sales) AS SALES FROM Orders$
+GROUP BY [Sub-Category],Quantity,MONTH([Order Date])
+),
+CTE1 AS (
+SELECT [Sub-Category],MAX(SALES) AS MAXSALES FROM CTE
+GROUP BY [Sub-Category]
+)
+SELECT CTE.[Sub-Category],Quantity,MONTH,CTE1.MAXSALES FROM CTE
+JOIN CTE1 ON CTE.[Sub-Category]=CTE1.[Sub-Category] AND CTE.SALES=CTE1.MAXSALES
+ORDER BY MAXSALES DESC
+
+--3. Identify the customers who have not made a purchase in the last 90 days.
+SELECT DISTINCT [Customer ID], [Customer Name],COUNT(DISTINCT [Order Date]) FROM Orders$
+WHERE DATEDIFF(DAY,[Order Date],GETDATE())<=90
+GROUP BY [Customer ID],[Customer Name]
+;
+--4. Calculate the average number of processing days for each product.
+WITH CTE AS (
+SELECT [Product ID],[Product Name],DATEDIFF(DAY,[Order Date],[Ship Date]) AS PROCESSINGDAYS FROM Orders$
+),
+CTE1 AS (
+SELECT [Product ID],[Product Name],AVG(PROCESSINGDAYS) AS AVGPROCESSINGDAYS FROM CTE
+GROUP BY [Product ID],[Product Name]
+)
+SELECT CTE.[Product ID],CTE.[Product Name],CTE1.AVGPROCESSINGDAYS FROM CTE
+JOIN CTE1 ON CTE.[Product ID]=CTE1.[Product ID] AND CTE.PROCESSINGDAYS=CTE1.AVGPROCESSINGDAYS
+
+--5. Identify the products that are frequently purchased together.
+SELECT P1.[Product ID],P2.[Product ID],COUNT(*) AS FREQUENCY FROM Orders$ AS P1
+JOIN Orders$ AS P2 ON P1.[Order ID]=P2.[Order ID] AND  P1.[Product ID]<P2.[Product ID]
+GROUP BY P1.[Product ID],P2.[Product ID]
+HAVING COUNT( *)>1
+ORDER BY FREQUENCY
+
+--6. Calculate the average order value for each day of the week.
+WITH CTE AS(SELECT YEAR([Order Date]) AS YEAR,MONTH([Order Date]) AS MONTH,DATENAME(WEEKDAY,[Order Date]) AS WEEKDAY,COUNT([Order ID]) AS COUNT  FROM Orders$
+GROUP BY YEAR([Order Date]),MONTH([Order Date]), DATENAME(WEEKDAY,[Order Date])
+), CTE1 AS (
+SELECT WEEKDAY,AVG(COUNT) AS AVG FROM CTE
+GROUP BY WEEKDAY
+)
+SELECT YEAR,MONTH,CTE1.WEEKDAY,CTE1.AVG FROM CTE
+JOIN CTE1 ON CTE.WEEKDAY=CTE1.WEEKDAY AND CTE.COUNT=CTE1.AVG
+
+SELECT DATEPART(WEEKDAY,[Order Date]) AS DAYOFWEEK,ROUND(AVG(Sales),2) FROM Orders$
+GROUP BY DATEPART(WEEKDAY,[Order Date])
+ORDER BY DAYOFWEEK
+--7. Determine the products that have experienced a decrease in sales compared to the same period last year.
+
+--8. Determine the customers who have placed orders on consecutive days.
+WITH CTE AS (
+SELECT [Customer ID],[Customer Name],[Order Date],LAG([Order Date]) OVER (PARTITION BY [Customer ID] ORDER BY [Order Date]) AS
+PREVIOUSORDERDATE 
+FROM Orders$)
+SELECT DISTINCT [Customer ID],[Customer Name],[Order Date] FROM CTE
+WHERE DATEDIFF(DAY,PREVIOUSORDERDATE,[Order Date])=1 AND PREVIOUSORDERDATE IS NOT NULL
+
+--9. Find the customers who have made purchases in all the sub-categories except 3 or less
+
+SELECT [Customer ID],[Customer Name],COUNT(DISTINCT [Sub-Category]) AS COUNT FROM Orders$
+GROUP BY [Customer ID],[Customer Name]
+HAVING COUNT(DISTINCT [Sub-Category])>3
+
+--10. Determine the products that have experienced an increase in sales compared to the previous quarter.
+WITH CTE AS(
+SELECT [Product ID],[Product Name],DATEPART(YEAR,[Order Date]) AS YEAR,DATEPART(QUARTER,[Order Date]) AS QUARTER,
+SUM(Sales) AS SALES
+FROM Orders$
+GROUP BY [Product ID],[Product Name],DATEPART(YEAR,[Order Date]),DATEPART(QUARTER,[Order Date])
+)
+SELECT C.[Product ID],C.[Product Name],C.SALES AS CURRENYQUARTERSALES,ISNULL(P.SALES,0),
+C.SALES-ISNULL(P.SALES,0) AS SALESDIFF FROM CTE AS C
+LEFT JOIN CTE AS P ON C.[Product ID]=P.[Product ID] AND C.[Product Name]=P.[Product Name] AND C.YEAR=P.YEAR
+AND C.QUARTER=P.QUARTER
+WHERE C.QUARTER=DATEPART(QUARTER,GETDATE()) AND C.YEAR=DATEPART(YEAR,GETDATE()) AND C.SALES>P.SALES
+
+--11. Determine the products that have not been sold in the last 60 days.
+SELECT DISTINCT O.[Product ID],O.[Product Name] FROM Orders$ AS O
+LEFT JOIN Orders$ O1 ON O.[Product ID]=O1.[Product ID] AND O1.[Order Date]>=DATEADD(DAY,-60,GETDATE())
+WHERE O1.[Product ID] IS NULL
+
+--12. Retrieve the first order (Order Id) placed by each customers.
+WITH CTE AS (
+SELECT [Order ID],[Customer ID],[Order Date],
+ROW_NUMBER() OVER (PARTITION BY [Customer ID] ORDER BY [Order Date]) as RN FROM Orders$
+)
+SELECT [Order ID],[Customer ID],[Order Date] FROM CTE
+WHERE RN=1
+
+--13. Calculate year-wise the average order value.
+WITH CTE AS(
+SELECT [Order ID],YEAR([Order Date]) AS YEAR,SUM(Sales) AS SUM FROM Orders$
+GROUP BY [Order ID],YEAR([Order Date])
+),CTE1 AS(
+SELECT YEAR,AVG(SUM) AS AVG FROM CTE
+GROUP BY YEAR
+)
+SELECT C.[Order ID],C.YEAR,D.AVG FROM CTE AS C
+JOIN CTE1 AS D ON C.YEAR=D.YEAR
+
+SELECT YEAR([Order Date]),AVG(Sales) FROM Orders$
+GROUP BY YEAR([Order Date]);
+
+--14. Find the customers who have ordered same product always, has not ordered any other product ever..
+SELECT [Customer ID],[Customer Name],COUNT(DISTINCT [Product ID]) AS DPC FROM Orders$ 
+GROUP BY [Customer ID],[Customer Name]
+HAVING COUNT(DISTINCT [Product ID])=1 ;
+
+
+--15. Find sales-wise top 3 consumers (customers) for each product sub-category
+WITH CTE AS(
+SELECT [Customer ID],[Sub-Category],SUM(Sales) AS SALES,
+ROW_NUMBER() OVER (PARTITION BY [Sub-Category] ORDER BY SUM(Sales) desc) AS RN FROM Orders$
+GROUP BY [Customer ID],[Customer Name],[Product Name],[Sub-Category]
+)
+SELECT [Customer ID],[Sub-Category],SALES FROM CTE
+WHERE RN IN (1,2,3)
+
+
+--16. Find the customers who have purchaged every time every product at discount.
+SELECT [Customer ID],[Customer Name] FROM Orders$
+WHERE DISCOUNT!=0
+GROUP BY [Customer ID],[Customer Name]
+HAVING COUNT(DISTINCT [Customer ID] )=(SELECT COUNT(DISTINCT [Customer ID]) FROM Orders$ WHERE Discount!=0);
+
+WITH CTE AS(
+SELECT [Customer ID],[Customer Name],COUNT([Order Date]) AS COUNT FROM Orders$
+WHERE Discount != 0
+GROUP BY [Customer ID],[Customer Name]
+),CTE1 AS(
+SELECT [Customer ID],[Customer Name],COUNT([Product ID]) AS COUNT FROM Orders$
+WHERE Discount != 0
+GROUP BY [Customer ID],[Customer Name]
+)
+SELECT * FROM CTE1;
+
+
+--17. Determine the 3 most profitable product variant within each product category.
+WITH CTE AS(
+SELECT Category,[Sub-Category],SUM(Profit) AS PROFIT,
+ROW_NUMBER() OVER (PARTITION BY [Category] ORDER BY SUM(Profit) desc ) AS RN FROM Orders$
+GROUP BY Category,[Sub-Category]
+)
+SELECT Category,[Sub-Category],PROFIT FROM CTE
+WHERE RN <=3
+
+--18. Determine the least profitable product variant within each product category.
+WITH CTE AS (
+SELECT Category,[Sub-Category],SUM(Profit) AS PROFIT,
+ROW_NUMBER() OVER(PARTITION BY [Category] ORDER BY SUM(Profit)) AS RN FROM Orders$
+GROUP BY Category,[Sub-Category]
+)
+SELECT Category,[Sub-Category],PROFIT FROM CTE
+WHERE RN=1
+
+--19. Determine the 3 least profitable product variant within each product category.
+WITH CTE AS (
+SELECT Category,[Sub-Category],SUM(Profit) AS PROFIT,
+ROW_NUMBER() OVER(PARTITION BY [Category] ORDER BY SUM(Profit)) AS RN FROM Orders$
+GROUP BY Category,[Sub-Category]
+)
+SELECT Category,[Sub-Category],PROFIT FROM CTE
+WHERE RN<=3
+
+--20. Determine the most selling date (1 to 31) of each month.
+SELECT DATENAME(YEAR,[Order Date]) AS YEAR,DATENAME(MONTH,[Order Date]) AS MONTH,DATENAME(DAY,[Order Date]) AS DAY,
+SUM(Sales) AS SALE
+FROM Orders$ GROUP BY DATENAME(YEAR,[Order Date]),DATENAME(MONTH,[Order Date]),DATENAME(DAY,[Order Date]);
+
+--21. Calculate the average time between consecutive purchases for each customer.
+WITH CTE AS (
+SELECT [Customer ID],[Customer Name],[Order Date],LAG([Order Date]) OVER (PARTITION BY [Customer ID] ORDER BY [Order Date]) AS 
+PREVORDERDATE,
+DATEDIFF(DAY,LAG([Order Date]) OVER (PARTITION BY [Customer ID] ORDER BY [Order Date]),[Order Date]) AS DAYDIFF FROM Orders$
+)
+SELECT [Customer ID],[Customer Name],AVG(DAYDIFF) AS AVGDAYS FROM CTE
+WHERE PREVORDERDATE IS NOT NULL
+GROUP BY [Customer ID],[Customer Name];
+
+--22. Calculate the average time between consecutive purchases for all customers who have done at least 10 orders.
+WITH CTE AS(
+SELECT [Customer ID],[Customer Name],COUNT(*) AS COUNT FROM Orders$
+GROUP BY [Customer ID],[Customer Name]
+HAVING COUNT(*)>=10
+), CTE1 AS(
+SELECT [Customer ID],[Customer Name],[Order Date],
+LAG([Order Date]) OVER (PARTITION BY [Customer ID] ORDER BY [Order Date]) AS PREVORDERDATE,
+DATEDIFF(DAY,LAG([Order Date]) OVER (PARTITION BY [Customer ID] ORDER BY [Order Date]),[Order Date]) AS DATEDIFF FROM Orders$
+)
+SELECT [Customer ID],[Customer Name],AVG(DATEDIFF) AVGOFDAYS FROM CTE1 AS C1
+WHERE [Customer ID] IN (SELECT [Customer ID] FROM CTE) AND PREVORDERDATE IS NOT NULL
+GROUP BY [Customer ID],[Customer Name]
+
+--23. Calculate total sales in the last 10 months
+SELECT SUM(Sales) AS TOTALSALESINLAST10MONTHS FROM Orders$
+WHERE DATEDIFF(MONTH,[Order Date],GETDATE()) <=10
+
+--24. Calculate month-wise running total sales for each year.\
+SELECT DATENAME(YEAR,[Order Date]) AS YEAR,DATENAME(MONTH,[Order Date]) AS MONTH,SUM(Sales) AS TOTALSALES FROM Orders$
+GROUP BY DATENAME(YEAR,[Order Date]),DATENAME(MONTH,[Order Date])
+ORDER BY YEAR,MONTH
+
+--25. Calculate average monthly sales for each year
+SELECT DATENAME(YEAR,[Order Date]),DATENAME(MONTH,[Order Date]),AVG(Sales) FROM Orders$
+GROUP BY DATENAME(YEAR,[Order Date]),DATENAME(MONTH,[Order Date])
+ORDER BY DATENAME(YEAR,[Order Date])
+
+--26. Calculate average monthly sales for each state
+SELECT State,DATENAME(MONTH,[Order Date]),AVG(Sales) FROM Orders$
+GROUP BY State,DATENAME(MONTH,[Order Date])
+ORDER BY STATE
+
+--27. Find the top 3 categories with highest total profit,
+--along with the sub-category that contributed the most to each categorie's profit.
+WITH CTE AS(
+SELECT Category,[Sub-Category],SUM(Profit) AS PROFIT,
+ROW_NUMBER() OVER ( PARTITION BY [Category] ORDER BY SUM(Profit)) AS RN FROM Orders$
+GROUP BY Category,[Sub-Category]
+),CTE1 AS(
+SELECT [Sub-Category],MAX(PROFIT) AS MAX  FROM CTE
+GROUP BY [Sub-Category]
+)
+SELECT Category,CTE.[Sub-Category],MAX FROM CTE
+JOIN CTE1 ON CTE.[Sub-Category]=CTE1.[Sub-Category] AND CTE.PROFIT=CTE1.MAX
+WHERE RN<=3
+ORDER BY Category
+
+--29. Calculate percentage contribution of each sub-categories to the total sales amount.
+SELECT [Sub-Category],ROUND(SUM(Sales),2) AS SUBCATEGORYTOTALSALES,
+ROUND((SUM(Sales)*100/(SELECT SUM(Sales) FROM Orders$)),2) AS PERCENTAGE
+FROM Orders$
+GROUP BY [Sub-Category];
+
+--30. Find the products that have continuous increase in profit over the past 3 months.
+WITH CTE AS(
+SELECT [Product ID],DATEADD(MONTH,DATEDIFF(MONTH,0,[Order Date]),0) AS STARTMONTH,
+SUM(Profit) AS TOTALPROFIT,
+LAG(SUM(Profit),1) OVER (PARTITION BY [Product ID] ORDER BY DATEADD(MONTH,DATEDIFF(MONTH,0,[Order Date]),0)) AS PREVIOUSMONTH,
+LAG(SUM(Profit),2) OVER (PARTITION BY [Product ID] ORDER BY DATEADD(MONTH,DATEDIFF(MONTH,0,[Order Date]),0)) AS PPREVIOUSMONTH
+FROM Orders$ 
+WHERE [Order Date] >= DATEADD(MONTH,-2,GETDATE())
+GROUP BY [Product ID],DATEADD(MONTH,DATEDIFF(MONTH,0,[Order Date]),0)
+)
+SELECT [Product ID] FROM CTE
+WHERE PREVIOUSMONTH IS NOT NULL AND
+PPREVIOUSMONTH IS NOT NULL AND TOTALPROFIT > PREVIOUSMONTH AND PREVIOUSMONTH>PPREVIOUSMONTH
+
+--31. Cummulative average sales per day of week for each state.
+WITH CTE AS(
+SELECT State,DATEPART(DW,[Order Date]) AS DAYOFWEEK,
+SUM(Sales) AS TOTALSALE,
+COUNT(*) AS NUMORDERS
+FROM Orders$
+GROUP BY State,DATEPART(DW,[Order Date])
+),CTE2 AS(
+SELECT State,DAYOFWEEK,TOTALSALE,NUMORDERS,
+SUM(TOTALSALE) OVER (PARTITION BY State,DAYOFWEEK ORDER BY DAYOFWEEK) AS CUMULATIVESALE,
+SUM(NUMORDERS) OVER (PARTITION BY State,DAYOFWEEK ORDER BY DAYOFWEEK) AS CUMULATIVEORDERS
+FROM CTE
+)
+SELECT State,DAYOFWEEK,
+(CUMULATIVESALE/CUMULATIVEORDERS) AS CUMMULATIVEAVERAGESALESPERDAYOFWEEK  FROM CTE2;
+
+--32. Find all the customers who have consistantly increased their sales every month over the last 6 months.
+WITH CTE AS(
+SELECT [Customer ID],DATEPART(YEAR,[Order Date]) AS YEAR,DATEPART(MONTH,[Order Date]) AS MONTH,
+SUM(Sales) AS TOTALSALE FROM Orders$
+GROUP BY [Customer ID],DATEPART(YEAR,[Order Date]),DATEPART(MONTH,[Order Date]) 
+),
+CTE1 AS (
+SELECT [Customer ID],YEAR,MONTH,TOTALSALE,
+LAG(TOTALSALE,1) OVER (PARTITION BY [Customer ID] ORDER BY YEAR,MONTH) AS PREVIOSMONTHSALE FROM CTE
+)
+SELECT DISTINCT [Customer ID] FROM CTE1
+WHERE YEAR=YEAR(GETDATE()) AND
+MONTH >=MONTH(GETDATE())-5 AND TOTALSALE>PREVIOSMONTHSALE;
+
+--33. Find the products that have experienced a sales decline of at least 10% compared to previous month, for last 3 months.
+WITH CTE AS(
+SELECT [Product ID],DATEPART(YEAR,[Order Date]) AS ORDERYEAR,DATEPART(MONTH,[Order Date]) AS ORDERMONTH,
+ROUND(SUM(Sales),2) AS TOTALSALES
+FROM Orders$
+GROUP BY [Product ID],DATEPART(YEAR,[Order Date]),DATEPART(MONTH,[Order Date])
+),
+CTE1 AS(
+SELECT [Product ID],ORDERYEAR,ORDERMONTH,TOTALSALES,
+LAG(TOTALSALES,1) OVER (PARTITION BY [Product ID] ORDER BY ORDERYEAR,ORDERMONTH) AS PREVIOUSMONTHSALE
+FROM CTE
+)
+SELECT [Product ID],ORDERYEAR,ORDERMONTH,TOTALSALES,PREVIOUSMONTHSALE,
+((TOTALSALES-PREVIOUSMONTHSALE)*100/PREVIOUSMONTHSALE) AS SALESDECLINEPERCENTAGE FROM CTE1
+WHERE PREVIOUSMONTHSALE IS NOT NULL AND
+ORDERYEAR=YEAR(GETDATE()) AND 
+ORDERMONTH BETWEEN MONTH(GETDATE())-2 AND MONTH(GETDATE())
+AND (TOTALSALES-PREVIOUSMONTHSALE)*100/PREVIOUSMONTHSALE<=-10.0
+
+
+--34. Calculate customer retention rate for each month.
+
+
+--35. Calculate average daily sales amount for each month, taking into account only weekdays Mon to Fri.
+WITH CTE8 AS(
+SELECT DATEPART(YEAR,[Order Date]) AS YEAR,DATEPART(MONTH,[Order Date]) AS MONTH,
+DATEPART(WEEKDAY,[Order Date]) AS WEEKDAY,SUM(Sales) AS SUMOFSALE 
+FROM Orders$
+WHERE DATEPART(WEEKDAY,[Order Date]) BETWEEN 2 AND 6
+GROUP BY DATEPART(YEAR,[Order Date]),DATEPART(MONTH,[Order Date]),DATEPART(WEEKDAY,[Order Date])
+),
+CTE AS(
+SELECT YEAR,MONTH,AVG(SUMOFSALE) AS AVERAGEDAILYSALES FROM CTE8
+GROUP BY YEAR,MONTH
+)
+SELECT YEAR,MONTH,AVERAGEDAILYSALES FROM CTE
+
+
+--36. Calculate overall percent profit for each sub-category.
+SELECT [Sub-Category],ROUND(SUM(Profit),2) AS TOTALPROFIT ,
+ROUND((SUM(Profit)*100/(SELECT SUM(Profit) FROM Orders$)),2) AS PROFITPERCENT
+FROM Orders$
+GROUP BY [Sub-Category];
+
+--37. Find the customers who have higher average profit per order than the overall average profit per order.
+WITH CTE AS(
+SELECT [Customer ID],[Customer Name],ROUND(AVG(Profit),2) AVGPROFITPERORDER FROM Orders$
+GROUP BY [Customer ID],[Customer Name]
+),
+CTE1 AS (
+SELECT AVG(Profit) AS OVERALL FROM Orders$
+)
+SELECT [Customer ID],[Customer Name],AVGPROFITPERORDER FROM CTE
+JOIN CTE1 ON CTE.AVGPROFITPERORDER>CTE1.OVERALL
+
